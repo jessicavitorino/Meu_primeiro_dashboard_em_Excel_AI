@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Despesas - Jessica | IA</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:#f4f7fb;color:#263238}
+header{background:linear-gradient(135deg,#173f5f,#20639b);color:white;padding:28px 5%;display:flex;justify-content:space-between;align-items:center;gap:20px}
+h1{margin:0;font-size:28px} header p{margin:7px 0 0;opacity:.9}.container{max-width:1200px;margin:25px auto;padding:0 20px}
+.toolbar{background:white;padding:18px;border-radius:14px;box-shadow:0 3px 14px #00000012;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+button,.file-label{border:0;border-radius:9px;padding:11px 17px;background:#20639b;color:white;font-weight:bold;cursor:pointer}.file-label{display:inline-block}
+button.secondary{background:#526777}button.green{background:#2a9d8f}button.dark{background:#173f5f}
+input[type=file]{display:none}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin:22px 0}
+.card{background:white;border-radius:14px;padding:20px;box-shadow:0 3px 14px #00000012}.card small{color:#607d8b;font-weight:bold}.value{font-size:27px;font-weight:bold;margin-top:8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.chart-card{height:360px}.chart-card canvas{max-height:285px}
+.table-card{margin-top:20px;overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px solid #e5e9ed;text-align:left}th{background:#edf4fa}
+.import-info{margin-left:auto;color:#607d8b;font-size:13px}
+@media(max-width:750px){.stats,.grid{grid-template-columns:1fr}header{display:block}.import-info{width:100%}}
+</style>
+</head>
+<body>
+<header>
+<div><h1>Dashboard de Despesas Pessoais</h1><p><b>Jessica</b> &nbsp;|&nbsp; Curso: <b>IA</b></p></div>
+<div id="date"></div>
+</header>
+
+<div class="container">
+<div class="toolbar">
+<label class="file-label" for="file">📥 Importar Excel/CSV</label>
+<input id="file" type="file" accept=".xlsx,.xls,.csv">
+<button class="green" onclick="exportCSV()">Exportar CSV</button>
+<button class="dark" onclick="exportPDF()">Exportar PDF</button>
+<button class="secondary" onclick="window.print()">Imprimir / Salvar PDF</button>
+<span class="import-info" id="status">Carregando dados fictícios...</span>
+</div>
+
+<div class="stats">
+<div class="card"><small>TOTAL DE DESPESAS</small><div class="value" id="total">R$ 0,00</div></div>
+<div class="card"><small>MÉDIA POR DESPESA</small><div class="value" id="media">R$ 0,00</div></div>
+<div class="card"><small>MAIOR DESPESA</small><div class="value" id="maior">R$ 0,00</div></div>
+</div>
+
+<div class="grid">
+<div class="card chart-card"><h3>Despesas por Categoria</h3><canvas id="catChart"></canvas></div>
+<div class="card chart-card"><h3>Despesas por Forma de Pagamento</h3><canvas id="payChart"></canvas></div>
+</div>
+<div class="card chart-card" style="margin-top:20px"><h3>Valor por Lançamento</h3><canvas id="launchChart"></canvas></div>
+
+<div class="card table-card">
+<h3>Dados importados</h3>
+<table id="dataTable"><thead></thead><tbody></tbody></table>
+</div>
+</div>
+
+<script>
+let rows=[
+["01/09/2026","Alimentação","Supermercado",245.80,"Cartão"],
+["02/09/2026","Transporte","Combustível",180.00,"Débito"],
+["03/09/2026","Moradia","Aluguel",1200.00,"Pix"],
+["04/09/2026","Lazer","Cinema",65.00,"Cartão"],
+["05/09/2026","Alimentação","Restaurante",92.50,"Cartão"],
+["06/09/2026","Saúde","Farmácia",78.90,"Débito"],
+["08/09/2026","Transporte","Aplicativo",32.40,"Pix"],
+["10/09/2026","Casa","Produtos de limpeza",54.70,"Cartão"],
+["12/09/2026","Lazer","Streaming",39.90,"Cartão"],
+["15/09/2026","Educação","Curso online",149.90,"Pix"],
+["18/09/2026","Alimentação","Padaria",28.60,"Dinheiro"],
+["20/09/2026","Transporte","Estacionamento",25.00,"Pix"],
+["22/09/2026","Vestuário","Roupas",210.00,"Cartão"],
+["25/09/2026","Lazer","Passeio",85.00,"Débito"],
+["28/09/2026","Alimentação","Delivery",67.80,"Cartão"]
+];
+let headers=["Data","Categoria","Descrição","Valor (R$)","Forma de Pagamento"], charts={};
+
+const money=v=>v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+document.getElementById("date").textContent=new Date().toLocaleDateString("pt-BR");
+
+function update(){
+let vals=rows.map(r=>Number(r[3])||0), total=vals.reduce((a,b)=>a+b,0);
+document.getElementById("total").textContent=money(total);
+document.getElementById("media").textContent=money(total/vals.length);
+document.getElementById("maior").textContent=money(Math.max(...vals));
+
+let cats={}, pays={}; rows.forEach(r=>{cats[r[1]]=(cats[r[1]]||0)+Number(r[3]||0);pays[r[4]]=(pays[r[4]]||0)+Number(r[3]||0)});
+draw("catChart","bar",Object.keys(cats),Object.values(cats),"Despesas");
+draw("payChart","doughnut",Object.keys(pays),Object.values(pays),"Despesas");
+draw("launchChart","line",rows.map((_,i)=>i+1),vals,"Valor");
+renderTable(); document.getElementById("status").textContent=rows.length+" lançamentos carregados";
+}
+function draw(id,type,labels,data,label){
+if(charts[id]) charts[id].destroy();
+charts[id]=new Chart(document.getElementById(id),{type,data:{labels,datasets:[{label,data,borderWidth:2,tension:.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:type==="doughnut"}}}});
+}
+function renderTable(){
+let th=document.querySelector("#dataTable thead"), tb=document.querySelector("#dataTable tbody");
+th.innerHTML="<tr>"+headers.map(h=>"<th>"+h+"</th>").join("")+"</tr>";
+tb.innerHTML=rows.map(r=>"<tr>"+r.map((v,i)=>"<td>"+(i===3?money(Number(v)):v)+"</td>").join("")+"</tr>").join("");
+}
+document.getElementById("file").addEventListener("change",e=>{
+let f=e.target.files[0]; if(!f)return;
+let reader=new FileReader();
+reader.onload=ev=>{
+try{
+let wb=XLSX.read(ev.target.result,{type:"array"}), ws=wb.Sheets[wb.SheetNames.find(n=>n.toLowerCase().includes("despesas"))||wb.SheetNames[0]];
+let a=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+let h=a[0].map(String), idxVal=h.findIndex(x=>x.toLowerCase().includes("valor")), idxCat=h.findIndex(x=>x.toLowerCase().includes("categoria")), idxPay=h.findIndex(x=>x.toLowerCase().includes("pagamento")), idxDesc=h.findIndex(x=>x.toLowerCase().includes("descri")), idxDate=h.findIndex(x=>x.toLowerCase().includes("data"));
+if(idxVal<0) throw new Error("Coluna Valor não encontrada");
+headers=["Data","Categoria","Descrição","Valor (R$)","Forma de Pagamento"];
+rows=a.slice(1).filter(r=>r.length).map(r=>[r[idxDate]||"",r[idxCat]||"",r[idxDesc]||"",typeof r[idxVal]==="number"?r[idxVal]:parseFloat(String(r[idxVal]).replace("R$","").replace(/\./g,"").replace(",","."))||0,r[idxPay]||""]);
+update();
+}catch(err){alert("Não foi possível importar: "+err.message)}
+};
+reader.readAsArrayBuffer(f);
+});
+function exportCSV(){
+let csv=[headers,...rows].map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(";")).join("\n");
+let a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download="Despesas_Jessica_IA.csv";a.click();
+}
+function exportPDF(){
+const {jsPDF}=window.jspdf; let doc=new jsPDF();
+doc.setFontSize(20);doc.text("Dashboard de Despesas Pessoais",14,18);
+doc.setFontSize(11);doc.text("Jessica | Curso: IA",14,26);
+doc.text("Total: "+document.getElementById("total").textContent+"   Média: "+document.getElementById("media").textContent+"   Maior: "+document.getElementById("maior").textContent,14,34);
+doc.autoTable({head:[headers],body:rows.map(r=>[...r.slice(0,3),money(Number(r[3])),r[4]]),startY:42,styles:{fontSize:8}});
+doc.save("Dashboard_Despesas_Jessica_IA.pdf");
+}
+update();
+</script>
+</body>
+</html>
